@@ -54,7 +54,7 @@ Each module is self-contained with its own models, serializers, views, and URLs.
 
    ```bash
    git clone <repo-url>
-   cd edupulse-backend
+   cd edupulse
    ```
 
 2. **Create a virtual environment:**
