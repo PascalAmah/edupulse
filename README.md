@@ -113,7 +113,3 @@ Each module is self-contained with its own models, serializers, views, and URLs.
 - Use the provided test files in `tests/` to add your unit/integration tests.
 
 ---
-
-## License
-
-MIT License. See `LICENSE` file (add if needed).
