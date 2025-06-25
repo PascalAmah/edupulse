@@ -1,0 +1,1 @@
+# Sync views package for offline synchronization 

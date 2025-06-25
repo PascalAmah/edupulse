@@ -1,0 +1,1 @@
+# Core views package for authentication and user management 
