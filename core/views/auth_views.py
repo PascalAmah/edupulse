@@ -13,6 +13,8 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
+from drf_yasg.utils import swagger_auto_schema
+from drf_yasg import openapi
 from ..serializers import (
     RegisterSerializer, LoginSerializer, UserSerializer, UserProfileSerializer,
     PasswordResetRequestSerializer, PasswordResetConfirmSerializer, ChangePasswordSerializer
@@ -25,19 +27,67 @@ class RegisterView(APIView):
     """
     permission_classes = [AllowAny]
     
+    @swagger_auto_schema(
+        operation_description="Register a new user account",
+        request_body=RegisterSerializer,
+        responses={
+            201: openapi.Response(
+                description="User registered successfully",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'message': openapi.Schema(type=openapi.TYPE_STRING),
+                        'user': openapi.Schema(type=openapi.TYPE_OBJECT),
+                        'tokens': openapi.Schema(type=openapi.TYPE_OBJECT),
+                    }
+                )
+            ),
+            400: openapi.Response(description="Bad request - validation errors"),
+            500: openapi.Response(description="Internal server error"),
+        }
+    )
     def post(self, request):
         """
         Register a new user.
         """
-        # TODO: Implement user registration logic
-        # 1. Validate registration data
-        # 2. Create user and profile
-        # 3. Generate JWT tokens
-        # 4. Return user data and tokens
-        return Response({
-            'message': 'User registration endpoint - Dev 1 to implement',
-            'status': 'success'
-        }, status=status.HTTP_201_CREATED)
+        serializer = RegisterSerializer(data=request.data)
+        
+        if serializer.is_valid():
+            try:
+                # Create user and profile
+                user = serializer.save()
+                
+                # Generate JWT tokens
+                refresh = RefreshToken.for_user(user)
+                
+                # Return user data and tokens
+                return Response({
+                    'message': 'User registered successfully',
+                    'user': {
+                        'id': user.id,
+                        'username': user.username,
+                        'email': user.email,
+                        'first_name': user.first_name,
+                        'last_name': user.last_name,
+                        'role': user.profile.role,
+                        'date_joined': user.date_joined
+                    },
+                    'tokens': {
+                        'access': str(refresh.access_token),
+                        'refresh': str(refresh)
+                    }
+                }, status=status.HTTP_201_CREATED)
+                
+            except Exception as e:
+                return Response({
+                    'message': 'Error creating user',
+                    'error': str(e)
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        else:
+            return Response({
+                'message': 'Registration failed',
+                'errors': serializer.errors
+            }, status=status.HTTP_400_BAD_REQUEST)
 
 
 class LoginView(APIView):

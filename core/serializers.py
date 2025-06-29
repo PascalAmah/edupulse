@@ -51,12 +51,38 @@ class RegisterSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         if attrs['password'] != attrs['password_confirm']:
             raise serializers.ValidationError("Passwords don't match")
+        
+        # Check if username already exists
+        if User.objects.filter(username=attrs['username']).exists():
+            raise serializers.ValidationError("Username already exists")
+        
+        # Check if email already exists
+        if User.objects.filter(email=attrs['email']).exists():
+            raise serializers.ValidationError("Email already exists")
+        
         return attrs
     
     def create(self, validated_data):
-        # TODO: Implement user creation logic
-        # Create user and associated profile
-        pass
+        # Extract role and password_confirm from validated_data
+        role = validated_data.pop('role')
+        validated_data.pop('password_confirm')
+        
+        # Create user
+        user = User.objects.create_user(
+            username=validated_data['username'],
+            email=validated_data['email'],
+            password=validated_data['password'],
+            first_name=validated_data.get('first_name', ''),
+            last_name=validated_data.get('last_name', '')
+        )
+        
+        # Create user profile
+        UserProfile.objects.create(
+            user=user,
+            role=role
+        )
+        
+        return user
 
 
 class LoginSerializer(serializers.Serializer):
