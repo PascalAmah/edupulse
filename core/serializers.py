@@ -171,3 +171,15 @@ class UserSessionSerializer(serializers.ModelSerializer):
         fields = ['id', 'session_key', 'ip_address', 'user_agent', 'login_time', 'logout_time', 'is_active']
         read_only_fields = ['id', 'session_key', 'ip_address', 'user_agent', 'login_time']
 
+
+class UserProfileUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UserProfile
+        fields = [
+            'bio', 'avatar', 'date_of_birth', 'phone_number'
+        ]
+
+
+class SwaggerTokenRefreshSerializer(serializers.Serializer):
+    refresh = serializers.CharField(help_text="Your refresh token")
+

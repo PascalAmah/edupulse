@@ -18,8 +18,9 @@ from drf_yasg import openapi
 from ..serializers import (
     RegisterSerializer, LoginSerializer, UserSerializer, UserProfileSerializer,
     PasswordResetRequestSerializer, PasswordResetConfirmSerializer, ChangePasswordSerializer,
-    LogoutSerializer
+    LogoutSerializer, UserProfileUpdateSerializer
 )
+from rest_framework_simplejwt.serializers import TokenRefreshSerializer
 
 
 class RegisterView(APIView):
@@ -197,27 +198,61 @@ class UserProfileView(APIView):
     """
     permission_classes = [IsAuthenticated]
     
+    @swagger_auto_schema(
+        operation_description="Get current user's profile.",
+        responses={
+            200: openapi.Response(
+                description="User profile retrieved successfully",
+                schema=openapi.Schema(type=openapi.TYPE_OBJECT)
+            ),
+            404: openapi.Response(description="Profile not found"),
+        }
+    )
     def get(self, request):
         """
         Get current user's profile.
         """
-        # TODO: Implement profile retrieval logic
-        # Return user profile data
-        return Response({
-            'message': 'Get user profile endpoint - Dev 1 to implement',
-            'status': 'success'
-        }, status=status.HTTP_200_OK)
-    
+        user = request.user
+        try:
+            profile = user.profile
+        except Exception:
+            return Response({'message': 'Profile not found'}, status=status.HTTP_404_NOT_FOUND)
+        serializer = UserProfileSerializer(profile)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @swagger_auto_schema(
+        operation_description="Update current user's profile.",
+        request_body=UserProfileUpdateSerializer,
+        responses={
+            200: openapi.Response(
+                description="User profile updated successfully",
+                schema=openapi.Schema(type=openapi.TYPE_OBJECT)
+            ),
+            400: openapi.Response(description="Invalid data"),
+        }
+    )
     def put(self, request):
         """
         Update current user's profile.
         """
-        # TODO: Implement profile update logic
-        # Update user profile data
-        return Response({
-            'message': 'Update user profile endpoint - Dev 1 to implement',
-            'status': 'success'
-        }, status=status.HTTP_200_OK)
+        user = request.user
+        try:
+            profile = user.profile
+        except Exception:
+            return Response({'message': 'Profile not found'}, status=status.HTTP_404_NOT_FOUND)
+        serializer = UserProfileUpdateSerializer(profile, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            # Optionally update user fields if present
+            user_data = request.data.get('user', {})
+            if user_data:
+                for field in ['first_name', 'last_name', 'email']:
+                    if field in user_data:
+                        setattr(user, field, user_data[field])
+                user.save()
+            return Response(UserProfileSerializer(profile).data, status=status.HTTP_200_OK)
+        else:
+            return Response({'message': 'Update failed', 'errors': serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
 
 
 class PasswordResetRequestView(APIView):
@@ -285,16 +320,30 @@ class RefreshTokenView(APIView):
     API view for refreshing JWT tokens.
     """
     permission_classes = [AllowAny]
-    
+
+    @swagger_auto_schema(
+        operation_description="Refresh JWT access token.",
+        request_body=TokenRefreshSerializer,
+        responses={
+            200: openapi.Response(
+                description="Token refreshed successfully",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'access': openapi.Schema(type=openapi.TYPE_STRING),
+                        'refresh': openapi.Schema(type=openapi.TYPE_STRING),
+                    }
+                )
+            ),
+            400: openapi.Response(description="Invalid refresh token or bad request"),
+        }
+    )
     def post(self, request):
         """
         Refresh JWT access token.
         """
-        # TODO: Implement token refresh logic
-        # 1. Validate refresh token
-        # 2. Generate new access token
-        # 3. Return new tokens
-        return Response({
-            'message': 'Token refresh endpoint - Dev 1 to implement',
-            'status': 'success'
-        }, status=status.HTTP_200_OK) 
+        serializer = TokenRefreshSerializer(data=request.data)
+        if serializer.is_valid():
+            return Response(serializer.validated_data, status=status.HTTP_200_OK)
+        else:
+            return Response({'message': 'Token refresh failed', 'errors': serializer.errors}, status=status.HTTP_400_BAD_REQUEST) 
