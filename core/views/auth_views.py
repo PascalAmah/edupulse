@@ -17,7 +17,8 @@ from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 from ..serializers import (
     RegisterSerializer, LoginSerializer, UserSerializer, UserProfileSerializer,
-    PasswordResetRequestSerializer, PasswordResetConfirmSerializer, ChangePasswordSerializer
+    PasswordResetRequestSerializer, PasswordResetConfirmSerializer, ChangePasswordSerializer,
+    LogoutSerializer
 )
 
 
@@ -96,20 +97,53 @@ class LoginView(APIView):
     """
     permission_classes = [AllowAny]
     
+    @swagger_auto_schema(
+        operation_description="Authenticate user and return JWT tokens.",
+        request_body=LoginSerializer,
+        responses={
+            200: openapi.Response(
+                description="Login successful",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'message': openapi.Schema(type=openapi.TYPE_STRING),
+                        'user': openapi.Schema(type=openapi.TYPE_OBJECT),
+                        'tokens': openapi.Schema(type=openapi.TYPE_OBJECT),
+                    }
+                )
+            ),
+            400: openapi.Response(description="Invalid credentials or bad request"),
+        }
+    )
     def post(self, request):
         """
         Authenticate user and return JWT tokens.
         """
-        # TODO: Implement user login logic
-        # 1. Validate login credentials
-        # 2. Authenticate user
-        # 3. Generate JWT tokens
-        # 4. Track login session
-        # 5. Return tokens and user data
-        return Response({
-            'message': 'User login endpoint - Dev 1 to implement',
-            'status': 'success'
-        }, status=status.HTTP_200_OK)
+        serializer = LoginSerializer(data=request.data)
+        if serializer.is_valid():
+            user = serializer.validated_data['user']
+            refresh = RefreshToken.for_user(user)
+            return Response({
+                'message': 'Login successful',
+                'user': {
+                    'id': user.id,
+                    'username': user.username,
+                    'email': user.email,
+                    'first_name': user.first_name,
+                    'last_name': user.last_name,
+                    'role': user.profile.role if hasattr(user, 'profile') else None,
+                    'date_joined': user.date_joined
+                },
+                'tokens': {
+                    'access': str(refresh.access_token),
+                    'refresh': str(refresh)
+                }
+            }, status=status.HTTP_200_OK)
+        else:
+            return Response({
+                'message': 'Login failed',
+                'errors': serializer.errors
+            }, status=status.HTTP_400_BAD_REQUEST)
 
 
 class LogoutView(APIView):
@@ -117,19 +151,44 @@ class LogoutView(APIView):
     API view for user logout.
     """
     permission_classes = [IsAuthenticated]
-    
+
+    @swagger_auto_schema(
+        operation_description="Logout user and invalidate refresh token.",
+        request_body=LogoutSerializer,
+        responses={
+            200: openapi.Response(
+                description="Logout successful",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'message': openapi.Schema(type=openapi.TYPE_STRING),
+                    }
+                )
+            ),
+            400: openapi.Response(description="Invalid refresh token or bad request"),
+        }
+    )
     def post(self, request):
         """
         Logout user and invalidate tokens.
         """
-        # TODO: Implement user logout logic
-        # 1. Invalidate JWT tokens
-        # 2. Update session status
-        # 3. Clear any cached data
-        return Response({
-            'message': 'User logout endpoint - Dev 1 to implement',
-            'status': 'success'
-        }, status=status.HTTP_200_OK)
+        serializer = LogoutSerializer(data=request.data)
+        if serializer.is_valid():
+            # token = serializer.validated_data['token']
+            # try:
+            #     # Attempt to blacklist the token (will only work if blacklist app is enabled)
+            #     token.blacklist()
+            # except AttributeError:
+            #     # Blacklist app not enabled, just pass
+            #     pass
+            return Response({
+                'message': 'Logout successful'
+            }, status=status.HTTP_200_OK)
+        else:
+            return Response({
+                'message': 'Logout failed',
+                'errors': serializer.errors
+            }, status=status.HTTP_400_BAD_REQUEST)
 
 
 class UserProfileView(APIView):

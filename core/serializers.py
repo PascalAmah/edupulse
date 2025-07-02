@@ -9,6 +9,8 @@ from rest_framework import serializers
 from django.contrib.auth.models import User
 from django.contrib.auth.password_validation import validate_password
 from .models import UserProfile, UserSession, PasswordResetToken
+from django.contrib.auth import authenticate
+from rest_framework_simplejwt.tokens import RefreshToken, TokenError
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -93,9 +95,31 @@ class LoginSerializer(serializers.Serializer):
     password = serializers.CharField()
     
     def validate(self, attrs):
-        # TODO: Implement login validation logic
-        # Validate username and password
-        return attrs
+        username = attrs.get('username')
+        password = attrs.get('password')
+        if username and password:
+            user = authenticate(username=username, password=password)
+            if not user:
+                raise serializers.ValidationError('Invalid username or password')
+            if not user.is_active:
+                raise serializers.ValidationError('User account is disabled')
+            attrs['user'] = user
+            return attrs
+        else:
+            raise serializers.ValidationError('Must include "username" and "password"')
+
+
+class LogoutSerializer(serializers.Serializer):
+    refresh = serializers.CharField()
+
+    def validate(self, attrs):
+        refresh = attrs.get('refresh')
+        try:
+            token = RefreshToken(refresh)
+            attrs['token'] = token
+        except TokenError:
+            raise serializers.ValidationError('Invalid refresh token')
+        return attrs 
 
 
 class PasswordResetRequestSerializer(serializers.Serializer):
@@ -145,4 +169,5 @@ class UserSessionSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserSession
         fields = ['id', 'session_key', 'ip_address', 'user_agent', 'login_time', 'logout_time', 'is_active']
-        read_only_fields = ['id', 'session_key', 'ip_address', 'user_agent', 'login_time'] 
+        read_only_fields = ['id', 'session_key', 'ip_address', 'user_agent', 'login_time']
+
