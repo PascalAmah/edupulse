@@ -57,13 +57,16 @@ class IsStudentOrReadOnly(permissions.BasePermission):
     """
     
     def has_permission(self, request, view):
-        # TODO: Implement student permission check
-        # Check if user has student role
+        # Allow read-only methods for any request
         if request.method in permissions.SAFE_METHODS:
             return True
-        
         # Write permissions are only allowed to students
-        return hasattr(request.user, 'profile') and request.user.profile.role == 'student'
+        user = request.user
+        return (
+            user.is_authenticated and
+            hasattr(user, 'profile') and
+            user.profile.role == 'student'
+        )
 
 
 class HasQuizAccess(permissions.BasePermission):
