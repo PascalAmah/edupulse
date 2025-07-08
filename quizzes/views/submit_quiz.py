@@ -1,141 +1,236 @@
-"""
-Quiz submission views for EduPulse project.
+# quizzes/views.py
 
-This module contains views for submitting quiz answers and getting results.
-Dev 2 responsibility: Quiz Logic
-"""
-
-from rest_framework import status
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated
-from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from rest_framework.permissions import IsAuthenticated
 from django.shortcuts import get_object_or_404
-from ..models import Quiz, QuizAttempt, QuizResponse
-from ..serializers import SubmitQuizSerializer, QuizResultSerializer
+from django.db import transaction
+from django.utils import timezone
+
+from ..models import Quiz, Question, Choice, QuizAttempt, QuizResponse
+from ..serializers import (
+    QuizSerializer, QuestionSerializer, QuizAttemptSerializer
+)
 from common.permissions import CanSubmitQuiz
 
 
 class SubmitQuizView(APIView):
     """
-    API view for submitting quiz answers.
+    POST /quiz/<int:quiz_id>/submit/
+    Submit quiz answers and calculate results.
     """
     permission_classes = [IsAuthenticated, CanSubmitQuiz]
-    
-    def post(self, request):
-        """
-        Submit quiz answers and calculate results.
-        """
-        # TODO: Implement quiz submission logic
-        # 1. Validate submission data
-        # 2. Check if user can submit (time limits, etc.)
-        # 3. Save answers and calculate score
-        # 4. Mark quiz attempt as completed
-        # 5. Return results
+
+    @transaction.atomic
+    def post(self, request, quiz_id):
+        quiz = get_object_or_404(Quiz, pk=quiz_id, is_active=True)
+        data = request.data
+        answers = data.get('answers', [])
+
+        attempt, created = QuizAttempt.objects.get_or_create(
+            user=request.user,
+            quiz=quiz,
+            defaults={'is_passed': False}
+        )
+
+        total_points = 0
+        points_earned = 0
+
+        for ans in answers:
+            question_id = ans.get('question_id')
+            selected_choice_ids = ans.get('selected_choice_ids', [])
+            text_answer = ans.get('text_answer', '')
+
+            question = get_object_or_404(quiz.questions, pk=question_id)
+            total_points += question.points
+
+            response, created = QuizResponse.objects.get_or_create(
+                attempt=attempt,
+                question=question,
+                defaults={'text_answer': text_answer}
+            )
+
+            if selected_choice_ids:
+                selected_choices = Choice.objects.filter(pk__in=selected_choice_ids, question=question)
+                response.selected_choices.set(selected_choices)
+
+                correct_choices = question.choices.filter(is_correct=True)
+                is_correct = set(selected_choices) == set(correct_choices)
+                response.is_correct = is_correct
+            elif question.question_type == 'short_answer':
+                response.is_correct = None
+            else:
+                response.is_correct = None
+
+            if response.is_correct:
+                response.points_earned = question.points
+                points_earned += question.points
+            else:
+                response.points_earned = 0
+
+            response.save()
+
+        percentage = round((points_earned / total_points) * 100, 2) if total_points > 0 else 0
+        attempt.score = percentage
+        attempt.is_passed = percentage >= quiz.passing_score
+        attempt.completed_at = timezone.now()
+        attempt.save()
+
         return Response({
-            'message': 'Submit quiz endpoint - Dev 2 to implement',
-            'status': 'success'
+            "message": "Quiz submitted successfully.",
+            "score": percentage,
+            "is_passed": attempt.is_passed
         }, status=status.HTTP_200_OK)
 
 
 class QuizResultView(APIView):
     """
-    API view for getting quiz results.
+    GET /quiz/<int:quiz_id>/result/
+    Get user's result for a specific quiz.
     """
-    permission_classes = [IsAuthenticated]
-    
+    permission_classes = [IsAuthenticated, CanSubmitQuiz]
+
     def get(self, request, quiz_id):
-        """
-        Get quiz results for a specific quiz.
-        """
-        # TODO: Implement quiz result retrieval logic
-        # 1. Get user's completed quiz attempt
-        # 2. Calculate detailed results
-        # 3. Return score, correct answers, feedback, etc.
+        quiz = get_object_or_404(Quiz, pk=quiz_id, is_active=True)
+        attempt = QuizAttempt.objects.filter(user=request.user, quiz=quiz).first()
+
+        if not attempt:
+            return Response({"detail": "No attempt found for this quiz."}, status=status.HTTP_404_NOT_FOUND)
+
         return Response({
-            'message': f'Quiz result endpoint for quiz {quiz_id} - Dev 2 to implement',
-            'status': 'success'
+            "quiz_title": quiz.title,
+            "score": attempt.score,
+            "is_passed": attempt.is_passed,
+            "completed_at": attempt.completed_at
         }, status=status.HTTP_200_OK)
 
 
 class SaveAnswerView(APIView):
     """
-    API view for saving individual answers during quiz.
+    POST /quiz/<int:quiz_id>/questions/<int:question_id>/answer/
+    Save answer for a specific question.
     """
-    permission_classes = [IsAuthenticated]
-    
-    def post(self, request, quiz_id):
-        """
-        Save answer for a specific question.
-        """
-        # TODO: Implement answer saving logic
-        # 1. Validate answer data
-        # 2. Save answer to database
-        # 3. Update quiz progress
-        return Response({
-            'message': f'Save answer endpoint for quiz {quiz_id} - Dev 2 to implement',
-            'status': 'success'
-        }, status=status.HTTP_200_OK)
+    permission_classes = [IsAuthenticated, CanSubmitQuiz]
+
+    @transaction.atomic
+    def post(self, request, quiz_id, question_id):
+        quiz = get_object_or_404(Quiz, pk=quiz_id, is_active=True)
+        question = get_object_or_404(quiz.questions, pk=question_id)
+
+        attempt, created = QuizAttempt.objects.get_or_create(
+            user=request.user,
+            quiz=quiz,
+            defaults={'is_passed': False}
+        )
+
+        selected_choice_ids = request.data.get('selected_choice_ids', [])
+        text_answer = request.data.get('text_answer', '')
+
+        response, created = QuizResponse.objects.get_or_create(
+            attempt=attempt,
+            question=question,
+            defaults={'text_answer': text_answer}
+        )
+
+        if selected_choice_ids:
+            selected_choices = Choice.objects.filter(pk__in=selected_choice_ids, question=question)
+            response.selected_choices.set(selected_choices)
+
+            correct_choices = question.choices.filter(is_correct=True)
+            is_correct = set(selected_choices) == set(correct_choices)
+            response.is_correct = is_correct
+        elif question.question_type == 'short_answer':
+            response.is_correct = None
+        else:
+            response.is_correct = None
+
+        response.save()
+
+        return Response({"message": "Answer saved successfully."}, status=status.HTTP_200_OK)
 
 
 class QuizFeedbackView(APIView):
     """
-    API view for getting detailed quiz feedback.
+    GET /quiz/<int:quiz_id>/feedback/
+    Get detailed feedback for completed quiz.
     """
-    permission_classes = [IsAuthenticated]
-    
+    permission_classes = [IsAuthenticated, CanSubmitQuiz]
+
     def get(self, request, quiz_id):
-        """
-        Get detailed feedback for completed quiz.
-        """
-        # TODO: Implement quiz feedback logic
-        # 1. Get user's quiz responses
-        # 2. Compare with correct answers
-        # 3. Generate detailed feedback
-        # 4. Return explanations for wrong answers
+        quiz = get_object_or_404(Quiz, pk=quiz_id, is_active=True)
+        attempt = QuizAttempt.objects.filter(user=request.user, quiz=quiz).first()
+
+        if not attempt:
+            return Response({"detail": "No attempt found."}, status=status.HTTP_404_NOT_FOUND)
+
+        feedback = []
+        for response in attempt.responses.all():
+            feedback.append({
+                "question": response.question.question_text,
+                "selected_choices": [choice.choice_text for choice in response.selected_choices.all()],
+                "text_answer": response.text_answer,
+                "is_correct": response.is_correct,
+                "explanation": response.question.explanation
+            })
+
         return Response({
-            'message': f'Quiz feedback endpoint for quiz {quiz_id} - Dev 2 to implement',
-            'status': 'success'
+            "quiz_title": quiz.title,
+            "score": attempt.score,
+            "feedback": feedback
         }, status=status.HTTP_200_OK)
 
 
 class RetakeQuizView(APIView):
     """
-    API view for retaking a quiz.
+    POST /quiz/<int:quiz_id>/retake/
+    Start a new attempt for a previously taken quiz.
     """
-    permission_classes = [IsAuthenticated]
-    
+    permission_classes = [IsAuthenticated, CanSubmitQuiz]
+
     def post(self, request, quiz_id):
-        """
-        Start a new attempt for a previously taken quiz.
-        """
-        # TODO: Implement quiz retake logic
-        # 1. Check if user can retake this quiz
-        # 2. Create new quiz attempt
-        # 3. Reset previous answers
-        # 4. Return new attempt data
+        quiz = get_object_or_404(Quiz, pk=quiz_id, is_active=True)
+        QuizAttempt.objects.filter(user=request.user, quiz=quiz).delete()
+        attempt = QuizAttempt.objects.create(user=request.user, quiz=quiz)
+
         return Response({
-            'message': f'Retake quiz endpoint for quiz {quiz_id} - Dev 2 to implement',
-            'status': 'success'
+            "message": "New quiz attempt started.",
+            "quiz_id": quiz.id,
+            "attempt_id": attempt.id
         }, status=status.HTTP_201_CREATED)
 
 
+from django.db.models import Avg
+
 class QuizAnalyticsView(APIView):
     """
-    API view for getting quiz analytics.
+    GET /quiz/<int:quiz_id>/analytics/
+    Get analytics for a specific quiz.
     """
-    permission_classes = [IsAuthenticated]
-    
+    permission_classes = [IsAuthenticated, CanSubmitQuiz]
+
     def get(self, request, quiz_id):
-        """
-        Get analytics for a specific quiz.
-        """
-        # TODO: Implement quiz analytics logic
-        # 1. Get quiz performance statistics
-        # 2. Calculate average scores, completion rates
-        # 3. Identify difficult questions
-        # 4. Return analytics data
+        quiz = get_object_or_404(Quiz, pk=quiz_id, is_active=True)
+        avg_score = quiz.attempts.aggregate(Avg('score'))['score__avg']
+        total_attempts = quiz.attempts.count()
+        completed_attempts = quiz.attempts.filter(completed_at__isnull=False).count()
+        completion_rate = round((completed_attempts / total_attempts) * 100, 2) if total_attempts > 0 else 0
+
+        difficult_questions = []
+        for question in quiz.questions.all():
+            total_responses = question.responses.count()
+            correct_responses = question.responses.filter(is_correct=True).count()
+            if total_responses > 0:
+                correct_rate = round((correct_responses / total_responses) * 100, 2)
+                if correct_rate < 50:
+                    difficult_questions.append({
+                        "question_text": question.question_text,
+                        "correct_rate": correct_rate
+                    })
+
         return Response({
-            'message': f'Quiz analytics endpoint for quiz {quiz_id} - Dev 2 to implement',
-            'status': 'success'
-        }, status=status.HTTP_200_OK) 
+            "quiz_title": quiz.title,
+            "average_score": avg_score,
+            "completion_rate": completion_rate,
+            "difficult_questions": difficult_questions
+        }, status=status.HTTP_200_OK)
