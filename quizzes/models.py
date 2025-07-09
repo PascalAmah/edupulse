@@ -5,9 +5,35 @@ This module contains models related to quiz functionality.
 Dev 2 responsibility: Quiz Logic
 """
 
+"""
+Quiz models  update for EduPulse project.
+Key Additions and Their Purpose
+Category model: For organizing quizzes by topic or tag (e.g. Productivity, Focus, Mindfulness)
+ManyToMany field on Quiz to Category: Quizzes can belong to multiple categories
+Explanation field in Question: Shows learning explanation after answering (supports microlearning retention)
+Feedback in QuizAttempt: Stores learner’s feedback on the quiz for platform improvement
+User difficulty rating in QuizAttempt: Captures perceived difficulty for AI recommendations and quiz difficulty adjustments
+
+"""
+
 from django.db import models
 from django.contrib.auth.models import User
 from django.utils import timezone
+
+
+class Category(models.Model):
+    """
+    Categories or tags for organizing quizzes.
+    """
+    name = models.CharField(max_length=100, unique=True)
+    description = models.TextField(blank=True)
+
+    class Meta:
+        db_table = 'categories'
+        verbose_name_plural = 'Categories'
+
+    def __str__(self):
+        return self.name
 
 
 class Quiz(models.Model):
@@ -27,6 +53,7 @@ class Quiz(models.Model):
     passing_score = models.IntegerField(default=70, help_text='Minimum score to pass (0-100)')
     is_active = models.BooleanField(default=True)
     created_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name='created_quizzes')
+    categories = models.ManyToManyField(Category, blank=True, related_name='quizzes')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
@@ -55,6 +82,7 @@ class Question(models.Model):
     points = models.IntegerField(default=1, help_text='Points for this question')
     order = models.IntegerField(default=0, help_text='Order of question in quiz')
     is_required = models.BooleanField(default=True)
+    explanation = models.TextField(blank=True, null=True, help_text='Explanation shown after answering for learning reinforcement')
     
     class Meta:
         db_table = 'questions'
@@ -92,6 +120,8 @@ class QuizAttempt(models.Model):
     score = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
     is_passed = models.BooleanField(default=False)
     time_taken = models.IntegerField(help_text='Time taken in seconds', null=True, blank=True)
+    feedback = models.TextField(blank=True, null=True, help_text='User feedback about quiz')
+    user_difficulty_rating = models.CharField(max_length=10, choices=Quiz.DIFFICULTY_CHOICES, blank=True, null=True, help_text='User perceived difficulty')
     
     class Meta:
         db_table = 'quiz_attempts'
@@ -118,4 +148,4 @@ class QuizResponse(models.Model):
         unique_together = ['attempt', 'question']
     
     def __str__(self):
-        return f"{self.attempt.user.username} - {self.question.question_text[:50]}" 
+        return f"{self.attempt.user.username} - {self.question.question_text[:50]}"
