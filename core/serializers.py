@@ -9,6 +9,8 @@ from rest_framework import serializers
 from django.contrib.auth.models import User
 from django.contrib.auth.password_validation import validate_password
 from .models import UserProfile, UserSession, PasswordResetToken
+from django.contrib.auth import authenticate
+from rest_framework_simplejwt.tokens import RefreshToken, TokenError
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -51,12 +53,38 @@ class RegisterSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         if attrs['password'] != attrs['password_confirm']:
             raise serializers.ValidationError("Passwords don't match")
+        
+        # Check if username already exists
+        if User.objects.filter(username=attrs['username']).exists():
+            raise serializers.ValidationError("Username already exists")
+        
+        # Check if email already exists
+        if User.objects.filter(email=attrs['email']).exists():
+            raise serializers.ValidationError("Email already exists")
+        
         return attrs
     
     def create(self, validated_data):
-        # TODO: Implement user creation logic
-        # Create user and associated profile
-        pass
+        # Extract role and password_confirm from validated_data
+        role = validated_data.pop('role')
+        validated_data.pop('password_confirm')
+        
+        # Create user
+        user = User.objects.create_user(
+            username=validated_data['username'],
+            email=validated_data['email'],
+            password=validated_data['password'],
+            first_name=validated_data.get('first_name', ''),
+            last_name=validated_data.get('last_name', '')
+        )
+        
+        # Create user profile
+        UserProfile.objects.create(
+            user=user,
+            role=role
+        )
+        
+        return user
 
 
 class LoginSerializer(serializers.Serializer):
@@ -67,9 +95,31 @@ class LoginSerializer(serializers.Serializer):
     password = serializers.CharField()
     
     def validate(self, attrs):
-        # TODO: Implement login validation logic
-        # Validate username and password
-        return attrs
+        username = attrs.get('username')
+        password = attrs.get('password')
+        if username and password:
+            user = authenticate(username=username, password=password)
+            if not user:
+                raise serializers.ValidationError('Invalid username or password')
+            if not user.is_active:
+                raise serializers.ValidationError('User account is disabled')
+            attrs['user'] = user
+            return attrs
+        else:
+            raise serializers.ValidationError('Must include "username" and "password"')
+
+
+class LogoutSerializer(serializers.Serializer):
+    refresh = serializers.CharField()
+
+    def validate(self, attrs):
+        refresh = attrs.get('refresh')
+        try:
+            token = RefreshToken(refresh)
+            attrs['token'] = token
+        except TokenError:
+            raise serializers.ValidationError('Invalid refresh token')
+        return attrs 
 
 
 class PasswordResetRequestSerializer(serializers.Serializer):
@@ -119,4 +169,17 @@ class UserSessionSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserSession
         fields = ['id', 'session_key', 'ip_address', 'user_agent', 'login_time', 'logout_time', 'is_active']
-        read_only_fields = ['id', 'session_key', 'ip_address', 'user_agent', 'login_time'] 
+        read_only_fields = ['id', 'session_key', 'ip_address', 'user_agent', 'login_time']
+
+
+class UserProfileUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UserProfile
+        fields = [
+            'bio', 'avatar', 'date_of_birth', 'phone_number'
+        ]
+
+
+class SwaggerTokenRefreshSerializer(serializers.Serializer):
+    refresh = serializers.CharField(help_text="Your refresh token")
+

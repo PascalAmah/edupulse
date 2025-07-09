@@ -20,7 +20,7 @@ This codebase is designed for rapid, independent development by multiple contrib
 ## 🗂️ Folder Structure
 
 ```
-edupulse-backend/
+edupulse/
 ├── edupulse/         # Django project config (settings, URLs, WSGI/ASGI)
 ├── common/           # Shared permissions, helpers
 ├── core/             # Auth & user management (Dev 1)
