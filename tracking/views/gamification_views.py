@@ -6,143 +6,109 @@ Dev 3 responsibility: Mood, Progress, Gamification
 """
 
 from rest_framework import status
-from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from django.utils import timezone
-from datetime import datetime, timedelta
-from ..models import Achievement, Points, Level
+from django.db.models import Sum, Count
+from ..models import Achievement, Points, Level, DailyGoal, LearningSession
 from ..serializers import AchievementSerializer, PointsSerializer, LevelSerializer
 
 
 class AchievementView(APIView):
-    """
-    API view for user achievements.
-    """
     permission_classes = [IsAuthenticated]
-    
+
     def get(self, request):
-        """
-        Get user's achievements.
-        """
-        # TODO: Implement achievement retrieval logic
-        # 1. Get user's earned achievements
-        # 2. Include achievement progress
-        # 3. Return achievement data
+        achievements = Achievement.objects.filter(user=request.user)
+        serializer = AchievementSerializer(achievements, many=True)
         return Response({
-            'message': 'Get achievements endpoint - Dev 3 to implement',
-            'status': 'success'
+            'achievements': serializer.data,
+            'total': achievements.count(),
         }, status=status.HTTP_200_OK)
 
 
 class PointsView(APIView):
-    """
-    API view for user points and XP.
-    """
     permission_classes = [IsAuthenticated]
-    
+
     def get(self, request):
-        """
-        Get user's points and XP information.
-        """
-        # TODO: Implement points retrieval logic
-        # 1. Get user's total points
-        # 2. Get points history
-        # 3. Return points data
+        points = Points.objects.filter(user=request.user)
+        total_points = points.aggregate(total=Sum('points_earned'))['total'] or 0
+        serializer = PointsSerializer(points, many=True)
         return Response({
-            'message': 'Get points endpoint - Dev 3 to implement',
-            'status': 'success'
+            'total_points': total_points,
+            'history': serializer.data
         }, status=status.HTTP_200_OK)
 
 
 class LevelView(APIView):
-    """
-    API view for user level progression.
-    """
     permission_classes = [IsAuthenticated]
-    
+
     def get(self, request):
-        """
-        Get user's level information.
-        """
-        # TODO: Implement level retrieval logic
-        # 1. Get user's current level
-        # 2. Calculate XP progress
-        # 3. Return level data
-        return Response({
-            'message': 'Get level endpoint - Dev 3 to implement',
-            'status': 'success'
-        }, status=status.HTTP_200_OK)
+        try:
+            level = Level.objects.get(user=request.user)
+            serializer = LevelSerializer(level)
+            xp_progress = (level.current_xp / level.xp_to_next_level) * 100 if level.xp_to_next_level else 0
+            return Response({
+                'level': serializer.data,
+                'xp_progress_percent': round(xp_progress, 2)
+            }, status=status.HTTP_200_OK)
+        except Level.DoesNotExist:
+            return Response({'error': 'Level not found.'}, status=status.HTTP_404_NOT_FOUND)
 
 
 class LeaderboardView(APIView):
-    """
-    API view for leaderboards.
-    """
     permission_classes = [IsAuthenticated]
-    
+
     def get(self, request):
-        """
-        Get leaderboard rankings.
-        """
-        # TODO: Implement leaderboard logic
-        # 1. Get top users by points/level
-        # 2. Calculate user's rank
-        # 3. Return leaderboard data
+        top_levels = Level.objects.all().order_by('-current_level', '-total_xp_earned')[:10]
+        leaderboard = [
+            {
+                'username': l.user.username,
+                'level': l.current_level,
+                'total_xp': l.total_xp_earned
+            } for l in top_levels
+        ]
+
+        try:
+            user_level = Level.objects.get(user=request.user)
+            user_rank = Level.objects.filter(
+                total_xp_earned__gt=user_level.total_xp_earned
+            ).count() + 1
+        except Level.DoesNotExist:
+            user_rank = None
+
         return Response({
-            'message': 'Get leaderboard endpoint - Dev 3 to implement',
-            'status': 'success'
+            'leaderboard': leaderboard,
+            'your_rank': user_rank
         }, status=status.HTTP_200_OK)
 
 
 class GamificationStatsView(APIView):
-    """
-    API view for gamification statistics.
-    """
     permission_classes = [IsAuthenticated]
-    
+
     def get(self, request):
-        """
-        Get comprehensive gamification statistics.
-        """
-        # TODO: Implement gamification stats logic
-        # 1. Calculate total points, level, achievements
-        # 2. Get ranking information
-        # 3. Return comprehensive stats
+        achievements = Achievement.objects.filter(user=request.user).count()
+        total_points = Points.objects.filter(user=request.user).aggregate(total=Sum('points_earned'))['total'] or 0
+        level = Level.objects.filter(user=request.user).first()
+
         return Response({
-            'message': 'Get gamification stats endpoint - Dev 3 to implement',
-            'status': 'success'
+            'achievements_count': achievements,
+            'total_points': total_points,
+            'current_level': level.current_level if level else 1
         }, status=status.HTTP_200_OK)
 
 
 class RewardView(APIView):
-    """
-    API view for reward system.
-    """
     permission_classes = [IsAuthenticated]
-    
+
     def get(self, request):
-        """
-        Get available rewards and user's reward status.
-        """
-        # TODO: Implement reward retrieval logic
-        # 1. Get available rewards
-        # 2. Check user's eligibility
-        # 3. Return reward data
+        goals = DailyGoal.objects.filter(user=request.user).order_by('-date')
+        reward_eligible = goals.filter(is_completed=True).exists()
         return Response({
-            'message': 'Get rewards endpoint - Dev 3 to implement',
-            'status': 'success'
+            'completed_goal_today': reward_eligible,
+            'daily_goals': goals.count()
         }, status=status.HTTP_200_OK)
-    
+
     def post(self, request, reward_id):
-        """
-        Claim a reward.
-        """
-        # TODO: Implement reward claiming logic
-        # 1. Validate reward eligibility
-        # 2. Award the reward
-        # 3. Update user's points/achievements
         return Response({
             'message': f'Claim reward endpoint for reward {reward_id} - Dev 3 to implement',
             'status': 'success'
@@ -150,53 +116,26 @@ class RewardView(APIView):
 
 
 class ChallengeView(APIView):
-    """
-    API view for learning challenges.
-    """
     permission_classes = [IsAuthenticated]
-    
+
     def get(self, request):
-        """
-        Get available challenges.
-        """
-        # TODO: Implement challenge retrieval logic
-        # 1. Get available challenges
-        # 2. Check user's progress
-        # 3. Return challenge data
         return Response({
-            'message': 'Get challenges endpoint - Dev 3 to implement',
-            'status': 'success'
+            'message': 'Challenge listing - logic to be implemented later'
         }, status=status.HTTP_200_OK)
-    
+
     def post(self, request, challenge_id):
-        """
-        Join a challenge.
-        """
-        # TODO: Implement challenge joining logic
-        # 1. Validate challenge availability
-        # 2. Add user to challenge
-        # 3. Return challenge data
         return Response({
-            'message': f'Join challenge endpoint for challenge {challenge_id} - Dev 3 to implement',
-            'status': 'success'
+            'message': f'Join challenge endpoint for challenge {challenge_id} - Dev 3 to implement'
         }, status=status.HTTP_200_OK)
 
 
 class BadgeView(APIView):
-    """
-    API view for user badges.
-    """
     permission_classes = [IsAuthenticated]
-    
+
     def get(self, request):
-        """
-        Get user's badges.
-        """
-        # TODO: Implement badge retrieval logic
-        # 1. Get user's earned badges
-        # 2. Include badge descriptions
-        # 3. Return badge data
+        badges = Achievement.objects.filter(user=request.user)
+        serializer = AchievementSerializer(badges, many=True)
         return Response({
-            'message': 'Get badges endpoint - Dev 3 to implement',
-            'status': 'success'
-        }, status=status.HTTP_200_OK) 
+            'badges': serializer.data,
+            'count': badges.count()
+        }, status=status.HTTP_200_OK)
