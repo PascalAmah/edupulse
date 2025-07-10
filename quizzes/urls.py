@@ -6,6 +6,7 @@ from django.urls import path
 from .views.fetch_quiz import (
     QuizListView,
     QuizDetailView,
+    StartQuizView,
     QuizQuestionsView,
     QuizQuestionDetailView,
     QuizProgressView,
@@ -26,6 +27,7 @@ urlpatterns = [
     # Fetch quiz endpoints
     path('', QuizListView.as_view(), name='quiz-list'),
     path('<int:pk>/', QuizDetailView.as_view(), name='quiz-detail'),
+    path('<int:quiz_id>/start/', StartQuizView.as_view(), name='start-quiz'),
     path('<int:quiz_id>/questions/', QuizQuestionsView.as_view(), name='quiz-questions'),
     path('<int:quiz_id>/questions/<int:question_id>/', QuizQuestionDetailView.as_view(), name='quiz-question-detail'),
     path('<int:quiz_id>/progress/', QuizProgressView.as_view(), name='quiz-progress'),
