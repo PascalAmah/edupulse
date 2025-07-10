@@ -1,137 +1,103 @@
-"""
-Quiz fetching views for EduPulse project.
+# quizzes/views.py
 
-This module contains views for retrieving quiz data and starting quizzes.
-Dev 2 responsibility: Quiz Logic
-"""
-
-from rest_framework import status
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated
-from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from rest_framework.permissions import IsAuthenticated
 from django.shortcuts import get_object_or_404
-from ..models import Quiz, QuizAttempt
-from ..serializers import QuizSerializer, QuizListSerializer, StartQuizSerializer
+from ..models import Quiz, Question, QuizAttempt
+from ..serializers import QuizSerializer, QuestionSerializer, QuizAttemptSerializer
 from common.permissions import HasQuizAccess
 
 
 class QuizListView(APIView):
     """
-    API view for listing available quizzes.
+    GET /quiz/ endpoint to fetch all active quizzes.
     """
-    permission_classes = [IsAuthenticated]
-    
+    permission_classes = [IsAuthenticated, HasQuizAccess]
+
     def get(self, request):
-        """
-        Get list of available quizzes.
-        """
-        # TODO: Implement quiz listing logic
-        # 1. Get quizzes based on user permissions
-        # 2. Apply filters (difficulty, category, etc.)
-        # 3. Return paginated quiz list
-        return Response({
-            'message': 'Quiz list endpoint - Dev 2 to implement',
-            'status': 'success'
-        }, status=status.HTTP_200_OK)
+        quizzes = Quiz.objects.filter(is_active=True)
+        serializer = QuizSerializer(quizzes, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
 
 class QuizDetailView(APIView):
     """
-    API view for getting quiz details.
+    GET /quiz/<int:pk>/ endpoint to fetch a specific quiz.
     """
     permission_classes = [IsAuthenticated, HasQuizAccess]
-    
+
+    def get(self, request, pk):
+        quiz = get_object_or_404(Quiz, pk=pk, is_active=True)
+        serializer = QuizSerializer(quiz)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class QuizQuestionsView(APIView):
+    """
+    GET /quiz/<int:quiz_id>/questions/ endpoint to fetch all questions for a specific quiz.
+    """
+    permission_classes = [IsAuthenticated, HasQuizAccess]
+
     def get(self, request, quiz_id):
-        """
-        Get detailed quiz information.
-        """
-        # TODO: Implement quiz detail retrieval logic
-        # 1. Get quiz by ID
-        # 2. Check user access permissions
-        # 3. Return quiz with questions and choices
-        return Response({
-            'message': f'Quiz detail endpoint for quiz {quiz_id} - Dev 2 to implement',
-            'status': 'success'
-        }, status=status.HTTP_200_OK)
+        quiz = get_object_or_404(Quiz, pk=quiz_id, is_active=True)
+        questions = quiz.questions.all()
+        serializer = QuestionSerializer(questions, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
 
-class StartQuizView(APIView):
+class QuizQuestionDetailView(APIView):
     """
-    API view for starting a quiz.
+    GET /quiz/<int:quiz_id>/questions/<int:question_id>/ endpoint to fetch a specific question from a quiz.
     """
     permission_classes = [IsAuthenticated, HasQuizAccess]
-    
-    def post(self, request):
-        """
-        Start a new quiz attempt.
-        """
-        # TODO: Implement quiz start logic
-        # 1. Validate quiz exists and is active
-        # 2. Check if user can start this quiz
-        # 3. Create quiz attempt record
-        # 4. Return quiz data with attempt ID
-        return Response({
-            'message': 'Start quiz endpoint - Dev 2 to implement',
-            'status': 'success'
-        }, status=status.HTTP_201_CREATED)
 
-
-class QuizQuestionView(APIView):
-    """
-    API view for getting individual quiz questions.
-    """
-    permission_classes = [IsAuthenticated]
-    
-    def get(self, request, quiz_id, question_number):
-        """
-        Get specific question from a quiz.
-        """
-        # TODO: Implement question retrieval logic
-        # 1. Get question by quiz and order number
-        # 2. Check if user has access to this quiz
-        # 3. Return question with choices
-        return Response({
-            'message': f'Question {question_number} from quiz {quiz_id} - Dev 2 to implement',
-            'status': 'success'
-        }, status=status.HTTP_200_OK)
+    def get(self, request, quiz_id, question_id):
+        quiz = get_object_or_404(Quiz, pk=quiz_id, is_active=True)
+        question = get_object_or_404(quiz.questions, pk=question_id)
+        serializer = QuestionSerializer(question)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
 
 class QuizProgressView(APIView):
     """
-    API view for getting quiz progress.
+    GET /quiz/<int:quiz_id>/progress/ endpoint to get user's progress on a specific quiz.
     """
-    permission_classes = [IsAuthenticated]
-    
+    permission_classes = [IsAuthenticated, HasQuizAccess]
+
     def get(self, request, quiz_id):
-        """
-        Get user's progress on a specific quiz.
-        """
-        # TODO: Implement quiz progress logic
-        # 1. Get user's quiz attempt
-        # 2. Calculate progress (questions answered, time remaining, etc.)
-        # 3. Return progress information
+        quiz = get_object_or_404(Quiz, pk=quiz_id, is_active=True)
+        attempt = QuizAttempt.objects.filter(user=request.user, quiz=quiz).first()
+
+        if not attempt:
+            return Response({
+                "quiz_id": quiz.id,
+                "quiz_title": quiz.title,
+                "progress": 0,
+                "completed": False
+            }, status=status.HTTP_200_OK)
+
+        total_questions = quiz.questions.count()
+        answered_questions = attempt.responses.count()
+        progress = round((answered_questions / total_questions) * 100, 2) if total_questions > 0 else 0
+
         return Response({
-            'message': f'Quiz progress endpoint for quiz {quiz_id} - Dev 2 to implement',
-            'status': 'success'
+            "quiz_id": quiz.id,
+            "quiz_title": quiz.title,
+            "progress": progress,
+            "completed": attempt.completed_at is not None,
+            "score": attempt.score
         }, status=status.HTTP_200_OK)
 
 
-class QuizAttemptListView(APIView):
+class UserQuizAttemptsView(APIView):
     """
-    API view for listing user's quiz attempts.
+    GET /quiz/attempts/ endpoint to get list of user's quiz attempts.
     """
     permission_classes = [IsAuthenticated]
-    
+
     def get(self, request):
-        """
-        Get list of user's quiz attempts.
-        """
-        # TODO: Implement quiz attempt listing logic
-        # 1. Get user's quiz attempts
-        # 2. Apply filters (completed, in-progress, etc.)
-        # 3. Return paginated attempt list
-        return Response({
-            'message': 'Quiz attempt list endpoint - Dev 2 to implement',
-            'status': 'success'
-        }, status=status.HTTP_200_OK) 
+        attempts = QuizAttempt.objects.filter(user=request.user)
+        serializer = QuizAttemptSerializer(attempts, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
