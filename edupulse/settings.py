@@ -82,19 +82,33 @@ WSGI_APPLICATION = 'edupulse.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.mysql',
-        'NAME': config('DB_NAME', default='edupulse_db'),
-        'USER': config('DB_USER', default='root'),
-        'PASSWORD': config('DB_PASSWORD', default=''),
-        'HOST': config('DB_HOST', default='localhost'),
-        'PORT': config('DB_PORT', default='3306'),
-        'OPTIONS': {
-            'charset': 'utf8mb4',
-        },
+# Check if we're running tests
+import sys
+TESTING = 'test' in sys.argv
+
+if TESTING:
+    # Use SQLite for testing to avoid MySQL foreign key issues
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': ':memory:',
+        }
     }
-}
+else:
+    # Use MySQL for development/production
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.mysql',
+            'NAME': config('DB_NAME', default='edupulse_db'),
+            'USER': config('DB_USER', default='root'),
+            'PASSWORD': config('DB_PASSWORD', default=''),
+            'HOST': config('DB_HOST', default='localhost'),
+            'PORT': config('DB_PORT', default='3306'),
+            'OPTIONS': {
+                'charset': 'utf8mb4',
+            },
+        }
+    }
 
 # Password validation
 # https://docs.djangoproject.com/en/4.2/ref/settings/#auth-password-validators
@@ -190,4 +204,20 @@ SWAGGER_SETTINGS = {
             'in': 'header'
         }
     }
-} 
+}
+
+# Test-specific settings
+if TESTING:
+    # Disable password hashing for faster tests
+    PASSWORD_HASHERS = [
+        'django.contrib.auth.hashers.MD5PasswordHasher',
+    ]
+    
+    # Use faster test runner
+    TEST_RUNNER = 'django.test.runner.DiscoverRunner'
+    
+    # Disable logging during tests
+    LOGGING = {
+        'version': 1,
+        'disable_existing_loggers': True,
+    } 
