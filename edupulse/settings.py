@@ -79,9 +79,6 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'edupulse.wsgi.application'
 
-import pymysql
-pymysql.install_as_MySQLdb()
-
 
 # Database
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases
