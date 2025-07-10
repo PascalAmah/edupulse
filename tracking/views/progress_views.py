@@ -6,192 +6,143 @@ Dev 3 responsibility: Mood, Progress, Gamification
 """
 
 from rest_framework import status
-from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.utils import timezone
-from datetime import datetime, timedelta
+from datetime import timedelta
 from ..models import LearningProgress, DailyGoal, LearningSession
 from ..serializers import LearningProgressSerializer, DailyGoalSerializer, LearningSessionSerializer
+from django.db.models import Avg, Sum
 
 
 class ProgressOverviewView(APIView):
-    """
-    API view for learning progress overview.
-    """
     permission_classes = [IsAuthenticated]
-    
+
     def get(self, request):
-        """
-        Get user's learning progress overview.
-        """
-        # TODO: Implement progress overview logic
-        # 1. Get user's learning progress
-        # 2. Calculate current statistics
-        # 3. Return progress overview
-        return Response({
-            'message': 'Progress overview endpoint - Dev 3 to implement',
-            'status': 'success'
-        }, status=status.HTTP_200_OK)
+        user = request.user
+        try:
+            progress = LearningProgress.objects.get(user=user)
+            serializer = LearningProgressSerializer(progress)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        except LearningProgress.DoesNotExist:
+            return Response({'message': 'Progress not found.'}, status=status.HTTP_404_NOT_FOUND)
 
 
 class ProgressReportView(APIView):
-    """
-    API view for detailed progress reports.
-    """
     permission_classes = [IsAuthenticated]
-    
+
     def get(self, request):
-        """
-        Get detailed progress report.
-        """
-        # TODO: Implement progress report logic
-        # 1. Generate comprehensive progress report
-        # 2. Include quiz performance, time spent, streaks
-        # 3. Compare with previous periods
-        # 4. Return detailed report
-        return Response({
-            'message': 'Progress report endpoint - Dev 3 to implement',
-            'status': 'success'
-        }, status=status.HTTP_200_OK)
+        user = request.user
+        progress = LearningProgress.objects.filter(user=user).first()
+        sessions = LearningSession.objects.filter(user=user)
+        total_sessions = sessions.count()
+        total_time = sessions.aggregate(Sum('duration'))['duration__sum'] or 0
+
+        report = {
+            'quizzes_taken': progress.total_quizzes_taken if progress else 0,
+            'quizzes_passed': progress.total_quizzes_passed if progress else 0,
+            'average_score': float(progress.average_score) if progress else 0.0,
+            'total_time_spent': total_time,
+            'current_streak': progress.current_streak if progress else 0,
+            'longest_streak': progress.longest_streak if progress else 0,
+            'total_sessions': total_sessions
+        }
+        return Response(report, status=status.HTTP_200_OK)
 
 
 class DailyGoalView(APIView):
-    """
-    API view for daily goal management.
-    """
     permission_classes = [IsAuthenticated]
-    
+
     def get(self, request):
-        """
-        Get user's daily goals.
-        """
-        # TODO: Implement daily goal retrieval logic
-        # 1. Get user's daily goals
-        # 2. Include current day's goal
-        # 3. Return goal data
-        return Response({
-            'message': 'Get daily goals endpoint - Dev 3 to implement',
-            'status': 'success'
-        }, status=status.HTTP_200_OK)
-    
+        user = request.user
+        today = timezone.now().date()
+        goal, _ = DailyGoal.objects.get_or_create(user=user, date=today)
+        serializer = DailyGoalSerializer(goal)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
     def post(self, request):
-        """
-        Create or update daily goal.
-        """
-        # TODO: Implement daily goal creation/update logic
-        # 1. Validate goal data
-        # 2. Create or update daily goal
-        # 3. Return goal data
-        return Response({
-            'message': 'Create/update daily goal endpoint - Dev 3 to implement',
-            'status': 'success'
-        }, status=status.HTTP_201_CREATED)
+        user = request.user
+        today = timezone.now().date()
+        goal, created = DailyGoal.objects.get_or_create(user=user, date=today)
+        serializer = DailyGoalSerializer(goal, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 class LearningSessionView(APIView):
-    """
-    API view for learning session management.
-    """
     permission_classes = [IsAuthenticated]
-    
+
     def get(self, request):
-        """
-        Get user's learning sessions.
-        """
-        # TODO: Implement learning session retrieval logic
-        # 1. Get user's learning sessions
-        # 2. Apply filters (date range, duration, etc.)
-        # 3. Return session data
-        return Response({
-            'message': 'Get learning sessions endpoint - Dev 3 to implement',
-            'status': 'success'
-        }, status=status.HTTP_200_OK)
-    
+        user = request.user
+        sessions = LearningSession.objects.filter(user=user).order_by('-start_time')
+        serializer = LearningSessionSerializer(sessions, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
     def post(self, request):
-        """
-        Start a new learning session.
-        """
-        # TODO: Implement learning session start logic
-        # 1. Create new learning session
-        # 2. Record start time
-        # 3. Return session data
-        return Response({
-            'message': 'Start learning session endpoint - Dev 3 to implement',
-            'status': 'success'
-        }, status=status.HTTP_201_CREATED)
-    
+        session = LearningSession.objects.create(user=request.user)
+        serializer = LearningSessionSerializer(session)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
     def put(self, request, session_id):
-        """
-        End a learning session.
-        """
-        # TODO: Implement learning session end logic
-        # 1. Update session end time
-        # 2. Calculate duration
-        # 3. Update session statistics
-        return Response({
-            'message': f'End learning session endpoint for session {session_id} - Dev 3 to implement',
-            'status': 'success'
-        }, status=status.HTTP_200_OK)
+        try:
+            session = LearningSession.objects.get(id=session_id, user=request.user)
+            end_time = timezone.now()
+            duration = (end_time - session.start_time).seconds // 60
+            session.end_time = end_time
+            session.duration = duration
+            session.save()
+            serializer = LearningSessionSerializer(session)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        except LearningSession.DoesNotExist:
+            return Response({'error': 'Session not found'}, status=status.HTTP_404_NOT_FOUND)
 
 
 class StreakView(APIView):
-    """
-    API view for learning streak management.
-    """
     permission_classes = [IsAuthenticated]
-    
+
     def get(self, request):
-        """
-        Get user's learning streak information.
-        """
-        # TODO: Implement streak retrieval logic
-        # 1. Calculate current streak
-        # 2. Get longest streak
-        # 3. Return streak data
-        return Response({
-            'message': 'Get learning streak endpoint - Dev 3 to implement',
-            'status': 'success'
-        }, status=status.HTTP_200_OK)
+        try:
+            progress = LearningProgress.objects.get(user=request.user)
+            return Response({
+                'current_streak': progress.current_streak,
+                'longest_streak': progress.longest_streak
+            }, status=status.HTTP_200_OK)
+        except LearningProgress.DoesNotExist:
+            return Response({'error': 'Progress not found'}, status=status.HTTP_404_NOT_FOUND)
 
 
 class ProgressComparisonView(APIView):
-    """
-    API view for progress comparison.
-    """
     permission_classes = [IsAuthenticated]
-    
+
     def get(self, request):
-        """
-        Compare progress across different time periods.
-        """
-        # TODO: Implement progress comparison logic
-        # 1. Compare current period with previous periods
-        # 2. Calculate improvement metrics
-        # 3. Return comparison data
+        user = request.user
+        progress = LearningProgress.objects.filter(user=user).first()
+        if not progress:
+            return Response({'message': 'No progress data available.'}, status=status.HTTP_404_NOT_FOUND)
+
         return Response({
-            'message': 'Progress comparison endpoint - Dev 3 to implement',
-            'status': 'success'
+            'quizzes_taken': progress.total_quizzes_taken,
+            'quizzes_passed': progress.total_quizzes_passed,
+            'average_score': float(progress.average_score),
+            'total_time_spent': progress.total_time_spent,
         }, status=status.HTTP_200_OK)
 
 
 class StudyAnalyticsView(APIView):
-    """
-    API view for study analytics.
-    """
     permission_classes = [IsAuthenticated]
-    
+
     def get(self, request):
-        """
-        Get detailed study analytics.
-        """
-        # TODO: Implement study analytics logic
-        # 1. Analyze study patterns
-        # 2. Identify optimal study times
-        # 3. Calculate productivity metrics
-        # 4. Return analytics data
+        user = request.user
+        sessions = LearningSession.objects.filter(user=user)
+        total_sessions = sessions.count()
+        total_time = sessions.aggregate(Sum('duration'))['duration__sum'] or 0
+        avg_duration = total_time / total_sessions if total_sessions > 0 else 0
+
         return Response({
-            'message': 'Study analytics endpoint - Dev 3 to implement',
-            'status': 'success'
-        }, status=status.HTTP_200_OK) 
+            'total_sessions': total_sessions,
+            'total_time_spent': total_time,
+            'average_session_duration': round(avg_duration, 2)
+        }, status=status.HTTP_200_OK)
