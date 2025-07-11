@@ -13,6 +13,8 @@ from django.utils import timezone
 from datetime import timedelta
 from ..models import MoodEntry
 from ..serializers import MoodEntrySerializer, MoodTrackingSerializer
+from drf_yasg.utils import swagger_auto_schema
+from drf_yasg import openapi
 
 
 class MoodEntryView(APIView):
@@ -21,6 +23,23 @@ class MoodEntryView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
+    @swagger_auto_schema(
+        operation_description="""
+        Get user's mood entries. Optional query params: start_date, end_date (YYYY-MM-DD).
+        Mood levels: 1=Very Sad, 2=Sad, 3=Neutral, 4=Happy, 5=Very Happy.
+        """,
+        manual_parameters=[
+            openapi.Parameter('start_date', openapi.IN_QUERY, description="Start date (YYYY-MM-DD)", type=openapi.TYPE_STRING),
+            openapi.Parameter('end_date', openapi.IN_QUERY, description="End date (YYYY-MM-DD)", type=openapi.TYPE_STRING),
+        ],
+        responses={
+            200: openapi.Response(
+                description="List of mood entries",
+                schema=MoodEntrySerializer(many=True)
+            ),
+            401: openapi.Response(description="Authentication required"),
+        }
+    )
     def get(self, request):
         """
         Get user's mood entries.
@@ -40,6 +59,18 @@ class MoodEntryView(APIView):
         serializer = MoodEntrySerializer(queryset, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
+    @swagger_auto_schema(
+        operation_description="""
+        Create a new mood entry. Mood levels: 1=Very Sad, 2=Sad, 3=Neutral, 4=Happy, 5=Very Happy.
+        Example: {"mood_level": 4, "notes": "Feeling good!"}
+        """,
+        request_body=MoodTrackingSerializer,
+        responses={
+            201: openapi.Response(description="Mood entry created successfully"),
+            400: openapi.Response(description="Invalid input"),
+            401: openapi.Response(description="Authentication required"),
+        }
+    )
     def post(self, request):
         """
         Create a new mood entry.

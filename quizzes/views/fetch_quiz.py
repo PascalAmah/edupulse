@@ -18,16 +18,29 @@ from ..models import Quiz, Question, QuizAttempt
 from ..serializers import QuizSerializer, QuestionSerializer, QuizAttemptSerializer
 from common.permissions import IsStudentOrReadOnly, HasQuizAccess
 from common.utils import calculate_quiz_statistics, format_time_duration
+from tracking.models import MoodEntry
 
 
 class QuizListView(APIView):
     """
-    GET /quiz/ endpoint to fetch all active quizzes.
+    GET /quiz/ endpoint to fetch all active quizzes, with mood-based recommendations.
     """
     permission_classes = [IsStudentOrReadOnly]
 
     @swagger_auto_schema(
-        operation_description="Get list of all active quizzes",
+        operation_description="""
+        Get list of all active quizzes. If the user is authenticated and 'mood_based' is true (default),
+        quizzes are recommended based on the user's latest mood entry:
+        - Very Sad/Sad (mood_level 1-2): Only 'easy' quizzes are recommended.
+        - Neutral (3): All quizzes are shown.
+        - Happy/Very Happy (4-5): Only 'medium' and 'hard' quizzes are recommended.
+        You can disable mood-based filtering by passing 'mood_based=false' as a query parameter.
+        """,
+        manual_parameters=[
+            openapi.Parameter('difficulty', openapi.IN_QUERY, description="Filter by difficulty", type=openapi.TYPE_STRING),
+            openapi.Parameter('category', openapi.IN_QUERY, description="Filter by category", type=openapi.TYPE_STRING),
+            openapi.Parameter('mood_based', openapi.IN_QUERY, description="Enable mood-based recommendation (default true)", type=openapi.TYPE_BOOLEAN),
+        ],
         responses={
             200: openapi.Response(
                 description="List of quizzes retrieved successfully",
@@ -38,32 +51,36 @@ class QuizListView(APIView):
     )
     def get(self, request):
         """
-        Get all active quizzes with optional filtering.
+        Get all active quizzes with optional filtering and mood-based recommendation.
         """
-        # Get query parameters for filtering
         difficulty = request.query_params.get('difficulty')
         category = request.query_params.get('category')
-        
+        mood_based = request.query_params.get('mood_based', 'true').lower() != 'false'
         quizzes = Quiz.objects.filter(is_active=True)
-        
+
         # Apply filters
         if difficulty:
             quizzes = quizzes.filter(difficulty=difficulty)
         if category:
             quizzes = quizzes.filter(categories__name__icontains=category)
-        
-        # Add statistics for each quiz
+
+        # Mood-based recommendation
+        if request.user.is_authenticated and mood_based:
+            latest_mood = MoodEntry.objects.filter(user=request.user).order_by('-timestamp').first()
+            if latest_mood:
+                if latest_mood.mood_level in [1, 2]:
+                    quizzes = quizzes.filter(difficulty='easy')
+                elif latest_mood.mood_level in [4, 5]:
+                    quizzes = quizzes.filter(difficulty__in=['medium', 'hard'])
+                # mood_level 3 (neutral): show all
+
         quiz_data = []
         for quiz in quizzes:
             quiz_serializer = QuizSerializer(quiz)
             quiz_dict = quiz_serializer.data
-            
-            # Add quiz statistics
             stats = calculate_quiz_statistics(quiz.id)
             quiz_dict.update(stats)
-            
             quiz_data.append(quiz_dict)
-        
         return Response(quiz_data, status=status.HTTP_200_OK)
 
 
