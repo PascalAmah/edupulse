@@ -2,13 +2,13 @@
 Quiz fetching views for EduPulse project.
 
 This module contains views for fetching quiz data and user progress.
-Dev 2 responsibility: Quiz Logic
 """
 
-from rest_framework.views import APIView
-from rest_framework.response import Response
 from rest_framework import status
+from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework.views import APIView
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from drf_yasg.utils import swagger_auto_schema
@@ -84,9 +84,10 @@ class QuizListView(APIView):
         return Response(quiz_data, status=status.HTTP_200_OK)
 
 
+
 class QuizDetailView(APIView):
     """
-    GET /quiz/<int:pk>/ endpoint to fetch a specific quiz.
+    API view for getting quiz details.
     """
     permission_classes = [HasQuizAccess]
 
@@ -204,9 +205,9 @@ class StartQuizView(APIView):
         }, status=status.HTTP_201_CREATED)
 
 
-class QuizQuestionsView(APIView):
+class StartQuizView(APIView):
     """
-    GET /quiz/<int:quiz_id>/questions/ endpoint to fetch all questions for a specific quiz.
+    API view for starting a quiz.
     """
     permission_classes = [HasQuizAccess]
 
@@ -246,9 +247,9 @@ class QuizQuestionsView(APIView):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 
-class QuizQuestionDetailView(APIView):
+class QuizQuestionView(APIView):
     """
-    GET /quiz/<int:quiz_id>/questions/<int:question_id>/ endpoint to fetch a specific question from a quiz.
+    API view for getting individual quiz questions.
     """
     permission_classes = [HasQuizAccess]
 
@@ -293,7 +294,7 @@ class QuizQuestionDetailView(APIView):
 
 class QuizProgressView(APIView):
     """
-    GET /quiz/<int:quiz_id>/progress/ endpoint to get user's progress on a specific quiz.
+    API view for getting quiz progress.
     """
     permission_classes = [HasQuizAccess]
 
@@ -323,6 +324,7 @@ class QuizProgressView(APIView):
             403: openapi.Response(description="Access denied"),
         }
     )
+    
     def get(self, request, quiz_id):
         """
         Get user's progress on a specific quiz.
@@ -371,9 +373,9 @@ class QuizProgressView(APIView):
         }, status=status.HTTP_200_OK)
 
 
-class UserQuizAttemptsView(APIView):
+class QuizAttemptListView(APIView):
     """
-    GET /quiz/attempts/ endpoint to get list of user's quiz attempts.
+    API view for listing user's quiz attempts.
     """
     permission_classes = [IsAuthenticated]
 

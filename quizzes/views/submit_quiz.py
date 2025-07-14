@@ -2,13 +2,13 @@
 Quiz submission views for EduPulse project.
 
 This module contains views for submitting quiz answers and managing quiz attempts.
-Dev 2 responsibility: Quiz Logic
 """
 
-from rest_framework.views import APIView
-from rest_framework.response import Response
 from rest_framework import status
+from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework.views import APIView
 from django.shortcuts import get_object_or_404
 from django.db import transaction
 from django.utils import timezone
@@ -28,8 +28,7 @@ from common.utils import (
 
 class SubmitQuizView(APIView):
     """
-    POST /quiz/<int:quiz_id>/submit/
-    Submit quiz answers and calculate results.
+    API view for submitting quiz answers.
     """
     permission_classes = [CanSubmitQuiz]
 
@@ -183,8 +182,7 @@ class SubmitQuizView(APIView):
 
 class QuizResultView(APIView):
     """
-    GET /quiz/<int:quiz_id>/result/
-    Get user's result for a specific quiz.
+    API view for getting quiz results.
     """
     permission_classes = [HasQuizAccess]
 
@@ -261,8 +259,7 @@ class QuizResultView(APIView):
 
 class SaveAnswerView(APIView):
     """
-    POST /quiz/<int:quiz_id>/questions/<int:question_id>/answer/
-    Save answer for a specific question.
+    API view for saving individual answers during quiz.
     """
     permission_classes = [CanSubmitQuiz]
 
@@ -344,8 +341,7 @@ class SaveAnswerView(APIView):
 
 class QuizFeedbackView(APIView):
     """
-    GET /quiz/<int:quiz_id>/feedback/
-    Get detailed feedback for completed quiz.
+    API view for getting detailed quiz feedback.
     """
     permission_classes = [HasQuizAccess]
 
@@ -384,6 +380,7 @@ class QuizFeedbackView(APIView):
             403: openapi.Response(description="Access denied"),
         }
     )
+    
     def get(self, request, quiz_id):
         """
         Get detailed feedback for completed quiz.
@@ -417,16 +414,14 @@ class QuizFeedbackView(APIView):
             })
 
         return Response({
-            "quiz_title": quiz.title,
-            "score": attempt.score,
-            "feedback": feedback
+            'message': f'Quiz feedback endpoint for quiz {quiz_id} - Dev 2 to implement',
+            'status': 'success'
         }, status=status.HTTP_200_OK)
 
 
 class RetakeQuizView(APIView):
     """
-    POST /quiz/<int:quiz_id>/retake/
-    Start a new attempt for a previously taken quiz.
+    API view for retaking a quiz.
     """
     permission_classes = [HasQuizAccess]
 
@@ -454,6 +449,7 @@ class RetakeQuizView(APIView):
             404: openapi.Response(description="Quiz not found"),
         }
     )
+    
     def post(self, request, quiz_id):
         """
         Start a new attempt for a previously taken quiz.
@@ -480,8 +476,7 @@ class RetakeQuizView(APIView):
 
 class QuizAnalyticsView(APIView):
     """
-    GET /quiz/<int:quiz_id>/analytics/
-    Get analytics for a specific quiz.
+    API view for getting quiz analytics.
     """
     permission_classes = [HasQuizAccess]
 
@@ -510,6 +505,7 @@ class QuizAnalyticsView(APIView):
             404: openapi.Response(description="Quiz not found"),
         }
     )
+    
     def get(self, request, quiz_id):
         """
         Get analytics for a specific quiz.
