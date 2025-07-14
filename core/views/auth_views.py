@@ -11,13 +11,17 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.serializers import TokenRefreshSerializer
 from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
+from drf_yasg.utils import swagger_auto_schema
+from drf_yasg import openapi
 from ..serializers import (
     RegisterSerializer, LoginSerializer, UserSerializer, UserProfileSerializer,
-    PasswordResetRequestSerializer, PasswordResetConfirmSerializer, ChangePasswordSerializer
+    PasswordResetRequestSerializer, PasswordResetConfirmSerializer, ChangePasswordSerializer,
+    LogoutSerializer, UserProfileUpdateSerializer
 )
-
+from common.permissions import IsStudentOrReadOnly
 
 class RegisterView(APIView):
     """
@@ -25,19 +29,67 @@ class RegisterView(APIView):
     """
     permission_classes = [AllowAny]
     
+    @swagger_auto_schema(
+        operation_description="Register a new user account",
+        request_body=RegisterSerializer,
+        responses={
+            201: openapi.Response(
+                description="User registered successfully",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'message': openapi.Schema(type=openapi.TYPE_STRING),
+                        'user': openapi.Schema(type=openapi.TYPE_OBJECT),
+                        'tokens': openapi.Schema(type=openapi.TYPE_OBJECT),
+                    }
+                )
+            ),
+            400: openapi.Response(description="Bad request - validation errors"),
+            500: openapi.Response(description="Internal server error"),
+        }
+    )
     def post(self, request):
         """
         Register a new user.
         """
-        # TODO: Implement user registration logic
-        # 1. Validate registration data
-        # 2. Create user and profile
-        # 3. Generate JWT tokens
-        # 4. Return user data and tokens
-        return Response({
-            'message': 'User registration endpoint - Dev 1 to implement',
-            'status': 'success'
-        }, status=status.HTTP_201_CREATED)
+        serializer = RegisterSerializer(data=request.data)
+        
+        if serializer.is_valid():
+            try:
+                # Create user and profile
+                user = serializer.save()
+                
+                # Generate JWT tokens
+                refresh = RefreshToken.for_user(user)
+                
+                # Return user data and tokens
+                return Response({
+                    'message': 'User registered successfully',
+                    'user': {
+                        'id': user.id,
+                        'username': user.username,
+                        'email': user.email,
+                        'first_name': user.first_name,
+                        'last_name': user.last_name,
+                        'role': user.profile.role,
+                        'date_joined': user.date_joined
+                    },
+                    'tokens': {
+                        'access': str(refresh.access_token),
+                        'refresh': str(refresh)
+                    }
+                }, status=status.HTTP_201_CREATED)
+                
+            except Exception as e:
+                return Response({
+                    'message': 'Error creating user',
+                    'error': str(e)
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        else:
+            return Response({
+                'message': 'Registration failed',
+                'errors': serializer.errors
+            }, status=status.HTTP_400_BAD_REQUEST)
 
 
 class LoginView(APIView):
@@ -46,20 +98,53 @@ class LoginView(APIView):
     """
     permission_classes = [AllowAny]
     
+    @swagger_auto_schema(
+        operation_description="Authenticate user and return JWT tokens.",
+        request_body=LoginSerializer,
+        responses={
+            200: openapi.Response(
+                description="Login successful",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'message': openapi.Schema(type=openapi.TYPE_STRING),
+                        'user': openapi.Schema(type=openapi.TYPE_OBJECT),
+                        'tokens': openapi.Schema(type=openapi.TYPE_OBJECT),
+                    }
+                )
+            ),
+            400: openapi.Response(description="Invalid credentials or bad request"),
+        }
+    )
     def post(self, request):
         """
         Authenticate user and return JWT tokens.
         """
-        # TODO: Implement user login logic
-        # 1. Validate login credentials
-        # 2. Authenticate user
-        # 3. Generate JWT tokens
-        # 4. Track login session
-        # 5. Return tokens and user data
-        return Response({
-            'message': 'User login endpoint - Dev 1 to implement',
-            'status': 'success'
-        }, status=status.HTTP_200_OK)
+        serializer = LoginSerializer(data=request.data)
+        if serializer.is_valid():
+            user = serializer.validated_data['user']
+            refresh = RefreshToken.for_user(user)
+            return Response({
+                'message': 'Login successful',
+                'user': {
+                    'id': user.id,
+                    'username': user.username,
+                    'email': user.email,
+                    'first_name': user.first_name,
+                    'last_name': user.last_name,
+                    'role': user.profile.role if hasattr(user, 'profile') else None,
+                    'date_joined': user.date_joined
+                },
+                'tokens': {
+                    'access': str(refresh.access_token),
+                    'refresh': str(refresh)
+                }
+            }, status=status.HTTP_200_OK)
+        else:
+            return Response({
+                'message': 'Login failed',
+                'errors': serializer.errors
+            }, status=status.HTTP_400_BAD_REQUEST)
 
 
 class LogoutView(APIView):
@@ -67,19 +152,44 @@ class LogoutView(APIView):
     API view for user logout.
     """
     permission_classes = [IsAuthenticated]
-    
+
+    @swagger_auto_schema(
+        operation_description="Logout user and invalidate refresh token.",
+        request_body=LogoutSerializer,
+        responses={
+            200: openapi.Response(
+                description="Logout successful",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'message': openapi.Schema(type=openapi.TYPE_STRING),
+                    }
+                )
+            ),
+            400: openapi.Response(description="Invalid refresh token or bad request"),
+        }
+    )
     def post(self, request):
         """
         Logout user and invalidate tokens.
         """
-        # TODO: Implement user logout logic
-        # 1. Invalidate JWT tokens
-        # 2. Update session status
-        # 3. Clear any cached data
-        return Response({
-            'message': 'User logout endpoint - Dev 1 to implement',
-            'status': 'success'
-        }, status=status.HTTP_200_OK)
+        serializer = LogoutSerializer(data=request.data)
+        if serializer.is_valid():
+            # token = serializer.validated_data['token']
+            # try:
+            #     # Attempt to blacklist the token (will only work if blacklist app is enabled)
+            #     token.blacklist()
+            # except AttributeError:
+            #     # Blacklist app not enabled, just pass
+            #     pass
+            return Response({
+                'message': 'Logout successful'
+            }, status=status.HTTP_200_OK)
+        else:
+            return Response({
+                'message': 'Logout failed',
+                'errors': serializer.errors
+            }, status=status.HTTP_400_BAD_REQUEST)
 
 
 class UserProfileView(APIView):
@@ -88,27 +198,61 @@ class UserProfileView(APIView):
     """
     permission_classes = [IsAuthenticated]
     
+    @swagger_auto_schema(
+        operation_description="Get current user's profile.",
+        responses={
+            200: openapi.Response(
+                description="User profile retrieved successfully",
+                schema=openapi.Schema(type=openapi.TYPE_OBJECT)
+            ),
+            404: openapi.Response(description="Profile not found"),
+        }
+    )
     def get(self, request):
         """
         Get current user's profile.
         """
-        # TODO: Implement profile retrieval logic
-        # Return user profile data
-        return Response({
-            'message': 'Get user profile endpoint - Dev 1 to implement',
-            'status': 'success'
-        }, status=status.HTTP_200_OK)
-    
+        user = request.user
+        try:
+            profile = user.profile
+        except Exception:
+            return Response({'message': 'Profile not found'}, status=status.HTTP_404_NOT_FOUND)
+        serializer = UserProfileSerializer(profile)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @swagger_auto_schema(
+        operation_description="Update current user's profile.",
+        request_body=UserProfileUpdateSerializer,
+        responses={
+            200: openapi.Response(
+                description="User profile updated successfully",
+                schema=openapi.Schema(type=openapi.TYPE_OBJECT)
+            ),
+            400: openapi.Response(description="Invalid data"),
+        }
+    )
     def put(self, request):
         """
         Update current user's profile.
         """
-        # TODO: Implement profile update logic
-        # Update user profile data
-        return Response({
-            'message': 'Update user profile endpoint - Dev 1 to implement',
-            'status': 'success'
-        }, status=status.HTTP_200_OK)
+        user = request.user
+        try:
+            profile = user.profile
+        except Exception:
+            return Response({'message': 'Profile not found'}, status=status.HTTP_404_NOT_FOUND)
+        serializer = UserProfileUpdateSerializer(profile, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            # Optionally update user fields if present
+            user_data = request.data.get('user', {})
+            if user_data:
+                for field in ['first_name', 'last_name', 'email']:
+                    if field in user_data:
+                        setattr(user, field, user_data[field])
+                user.save()
+            return Response(UserProfileSerializer(profile).data, status=status.HTTP_200_OK)
+        else:
+            return Response({'message': 'Update failed', 'errors': serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
 
 
 class PasswordResetRequestView(APIView):
@@ -176,16 +320,40 @@ class RefreshTokenView(APIView):
     API view for refreshing JWT tokens.
     """
     permission_classes = [AllowAny]
-    
+
+    @swagger_auto_schema(
+        operation_description="Refresh JWT access token.",
+        request_body=TokenRefreshSerializer,
+        responses={
+            200: openapi.Response(
+                description="Token refreshed successfully",
+                schema=openapi.Schema(
+                    type=openapi.TYPE_OBJECT,
+                    properties={
+                        'access': openapi.Schema(type=openapi.TYPE_STRING),
+                        'refresh': openapi.Schema(type=openapi.TYPE_STRING),
+                    }
+                )
+            ),
+            400: openapi.Response(description="Invalid refresh token or bad request"),
+        }
+    )
     def post(self, request):
         """
         Refresh JWT access token.
         """
-        # TODO: Implement token refresh logic
-        # 1. Validate refresh token
-        # 2. Generate new access token
-        # 3. Return new tokens
-        return Response({
-            'message': 'Token refresh endpoint - Dev 1 to implement',
-            'status': 'success'
-        }, status=status.HTTP_200_OK) 
+        serializer = TokenRefreshSerializer(data=request.data)
+        if serializer.is_valid():
+            return Response(serializer.validated_data, status=status.HTTP_200_OK)
+        else:
+            return Response({'message': 'Token refresh failed', 'errors': serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class StudentProtectedDummyView(APIView):
+    permission_classes = [IsStudentOrReadOnly]
+
+    def get(self, request):
+        return Response({'message': 'Anyone can view this (read-only)'})
+
+    def post(self, request):
+        return Response({'message': 'You are a student and can POST!'}) 

@@ -7,8 +7,13 @@ Dev 2 responsibility: Quiz Logic
 
 from django.urls import path
 from .views.fetch_quiz import (
-    QuizListView, QuizDetailView, StartQuizView, QuizQuestionView,
-    QuizProgressView, QuizAttemptListView
+    QuizListView,
+    QuizDetailView,
+    StartQuizView,
+    QuizQuestionsView,
+    QuizQuestionDetailView,
+    QuizProgressView,
+    UserQuizAttemptsView,
 )
 from .views.submit_quiz import (
     SubmitQuizView, QuizResultView, SaveAnswerView, QuizFeedbackView,
@@ -16,14 +21,15 @@ from .views.submit_quiz import (
 )
 
 urlpatterns = [
-    # Quiz fetching endpoints
-    path('', QuizListView.as_view(), name='quiz_list'),
-    path('<int:quiz_id>/', QuizDetailView.as_view(), name='quiz_detail'),
-    path('start/', StartQuizView.as_view(), name='start_quiz'),
-    path('<int:quiz_id>/question/<int:question_number>/', QuizQuestionView.as_view(), name='quiz_question'),
-    path('<int:quiz_id>/progress/', QuizProgressView.as_view(), name='quiz_progress'),
-    path('attempts/', QuizAttemptListView.as_view(), name='quiz_attempt_list'),
-    
+    # Fetch quiz endpoints
+    path('', QuizListView.as_view(), name='quiz-list'),
+    path('<int:pk>/', QuizDetailView.as_view(), name='quiz-detail'),
+    path('<int:quiz_id>/start/', StartQuizView.as_view(), name='start-quiz'),
+    path('<int:quiz_id>/questions/', QuizQuestionsView.as_view(), name='quiz-questions'),
+    path('<int:quiz_id>/questions/<int:question_id>/', QuizQuestionDetailView.as_view(), name='quiz-question-detail'),
+    path('<int:quiz_id>/progress/', QuizProgressView.as_view(), name='quiz-progress'),
+    path('attempts/', UserQuizAttemptsView.as_view(), name='user-quiz-attempts'),
+  
     # Quiz submission endpoints
     path('submit/', SubmitQuizView.as_view(), name='submit_quiz'),
     path('<int:quiz_id>/result/', QuizResultView.as_view(), name='quiz_result'),
